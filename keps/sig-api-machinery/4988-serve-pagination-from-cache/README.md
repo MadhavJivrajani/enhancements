@@ -119,17 +119,23 @@ B-tree snapshots to serve paginated lists.
 
 Mechanism:
 1. **Snapshot Creation:** When a paginated list request (with a limit parameter
-   set) is received, the API server will create a snapshot using the efficient
-   [Clone()](https://pkg.go.dev/github.com/google/btree#BTree.Clone) method.
+   set) is received, the API server will create a snapshot of the B-tree based cache
+   using the efficient [Clone()](https://pkg.go.dev/github.com/google/btree#BTree.Clone) method.
    This clone is a lazy copy, only duplicating necessary nodes, resulting in
-   minimal overhead.
+   minimal overhead and effectively is container of pointers in-memory and not actual copies
+   of the B-tree nodes. Since we do not edit event histories in the watchCache, a snapshot
+   is treated as a read-only entity and its creation is cheap (creating only pointers in memory).
 2. **Snapshot Storage:** The snapshot will be stored in memory, keyed by
-   resourceVersion.
+   resourceVersion the watchCache has propagated upto when the snapshot was created. It is also this
+   resourceVersion that is returned as part of the continuation token in the response. 
 3. **Serving Subsequent Pages:** When a subsequent request with a continue token
    arrives, the API server will:
-   - Extract the resourceVersion from the continue token.
-   - Retrieve the corresponding snapshot using the resourceVersion as the key.
-   - Use the snapshot to serve the requested page, or pass the request to etcd is snapshot is not available.
+  - Extract the resourceVersion from the continue token. 
+  - Since resourceVersions provide a global logical clock sequencing all events in the cluster, a snapshot
+    of the watchCache for this resourceVersion is retrieved using the resourceVersion as the key.
+  - The corresponding snapshot may not be present in the following 2 scenarios at an API Server:
+    - Snapshot has been cleaned up due to the 75s TTL (see below).
+    - In a HA setup, the request goes to an API Server that did not get the initial LIST request (and hence does not have the in-memory snapshot created as described in (1)).
 4. **Snapshot Cleanup:** Snapshots will be subject to a Time-To-Live (TTL)
    mechanism. We will reuse the existing watch event cleanup logic, which has a
    75s TTL. This ensures that snapshots don't accumulate indefinitely.

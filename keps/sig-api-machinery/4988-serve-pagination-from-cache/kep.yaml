@@ -2,6 +2,7 @@ title: Serve pagination from cache
 kep-number: 4988
 authors:
   - "@serathius"
+  - "@MadhavJivrajani"
 owning-sig: sig-api-machinery
 participating-sigs: []
 status: provisional
